@@ -1,5 +1,13 @@
+#|
+  This file is a part of lisp-to-php project.
+  Copyright (c) 2012 Stephen A. Goss (steveth45@gmail.com)
+|#
 
-(use-package :cl-ppcre)
+(in-package :cl-user)
+(defpackage lisp-to-php
+  (:use :cl :cl-ppcre)
+  (:export :ltp))
+(in-package :lisp-to-php)
 
 ;;TODO:
 ;; lambda
@@ -19,6 +27,8 @@
 (defparameter *cs-readtable* (let ((csrt (copy-readtable nil)))
                                (setf (readtable-case csrt) :preserve)
                                csrt))
+
+(defparameter *infix-operators* '(+ - * /))
 
 (defun ci-read-from-string (string &rest args)
   (let ((*readtable* *cs-readtable*))
