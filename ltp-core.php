@@ -80,3 +80,93 @@ function list_() {
     }
     return $result;
 }
+
+function not($val) {
+    if($val) {
+        return null;
+    } else {
+        return true;
+    }
+}
+
+// Numeric Comparison functions
+
+function verify_number_args(&$args) {
+    for($args as &$arg) {
+        verify_number($arg);
+    }
+}
+
+function verify_number(&$n) {
+    if(is_string($n) || !is_numeric($n)) {
+        throw new Exception(
+            "Mathematical comparison made on non-number.");
+    }
+}
+
+function equals() {
+    $args = func_get_args();
+    verify_number_args($args);
+    for($i=1;$i<count($args);++$i) {
+        if($args[$i - 1] != $args[$i]) {
+            return null;
+        }
+    }
+    return true;
+}
+
+function notequals() {
+    $args = func_get_args();
+    verify_number_args($args);
+    for($i=1;$i<count($args);++$i) {
+        if($args[$i - 1] == $args[$i]) {
+            return null;
+        }
+    }
+    return true;
+}
+
+function lessthan() {
+    $args = func_get_args();
+    verify_number_args($args);
+    for($i=1;$i<count($args);++$i) {
+        if($args[$i - 1] >= $args[$i]) {
+            return null;
+        }
+    }
+    return true;
+}
+
+function greaterthan() {
+    $args = func_get_args();
+    verify_number_args($args);
+    for($i=1;$i<count($args);++$i) {
+        if($args[$i - 1] <= $args[$i]) {
+            return null;
+        }
+    }
+    return true;
+}
+
+function lessthanequals() {
+    $args = func_get_args();
+    verify_number_args($args);
+    for($i=1;$i<count($args);++$i) {
+        if($args[$i - 1] > $args[$i]) {
+            return null;
+        }
+    }
+    return true;
+}
+
+function greaterthanequals() {
+    $args = func_get_args();
+    verify_number_args($args);
+    for($i=1;$i<count($args);++$i) {
+        if($args[$i - 1] < $args[$i]) {
+            return null;
+        }
+    }
+    return true;
+}
+

@@ -13,26 +13,34 @@
 ;; lambda
 ;; progn
 ;; defun -> function
-;; infix operators (+, -, *, /)
 ;; method calls (->bar foo 1 2 3) -> $foo->bar(1, 2, 3)
 ;; number literals
-;; strings "What's up?" -> 'What\'s up?'
-;; variable name fixes this-is-it! -> thisIsItbang
 ;; funcall
 ;; apply
 ;; macros?
-;; setq / setf
 ;; array support / gethash setf-able
 
 (defparameter *cs-readtable* (let ((csrt (copy-readtable nil)))
                                (setf (readtable-case csrt) :preserve)
                                csrt))
 
-(defparameter *infix-operators* '(+ - * /))
-
 (defun ci-read-from-string (string &rest args)
-  (let ((*readtable* *cs-readtable*))
+  (let ((*readtable* *cs-readtable*)
+        (*package* (find-package 'lisp-to-php)))
     (apply #'read-from-string string args)))
+
+(defparameter *infix* (ci-read-from-string "(+ - * /)"))
+;; TODO these php operators: % . >> << & ^ | && || and xor or
+(defparameter *numeric-comparison* (ci-read-from-string "(= /= < > <= >=)"))
+(defparameter *unary* (ci-read-from-string "(clone new ++ -- ~ - !)"))
+(defparameter *replacements* '(("=" . "equals")
+                               ("/" . "slash")
+                               ("<" . "lessthan")
+                               (">" . "greaterthan")
+                               ("!" . "bang")
+                               ("#" . "hash")
+                               ("\\?" . "what")
+                               ("-" . "_")))
 
 (defun make-env () '())
 
@@ -40,7 +48,7 @@
   (concatenate 'list varnames env))
 
 (defun get-name (symbol env)
-  (let ((name (string symbol)))
+  (let ((name (php-name symbol)))
     (dotimes (x (count symbol env))
       (setq name (concatenate 'string name "_")))
     name))
@@ -75,6 +83,12 @@
     (regex-replace-all "(.+)" string "    \\1")
     string))
 
+(defun php-name (name)
+  (let ((name (string name)))
+    (dolist (map *replacements*)
+      (setq name (regex-replace-all (car map) name (cdr map))))
+    name))
+
 (defun form-to-php (form env &optional (top-level nil) (stmt nil))
   (if (listp form)
     (let ((head (car form))
@@ -84,13 +98,31 @@
          (if-to-php tail env top-level stmt))
         ((eq '|let| head)
          (let-to-php form env top-level stmt))
+        ((member head '(|setq| |setf|))
+         (setf-to-php form env top-level stmt))
+        ((member head *infix*)
+         (infix-to-php head tail env top-level stmt))
+        ((member head *unary*)
+         (unary-to-php head tail env top-level stmt))
         ;; TODO: handle lambda
-        (T (format nil "~a(~{~a~^, ~})~[;~%~]" head
+        (T (format nil "~a(~{~a~^, ~})~[;~%~]" (php-name head)
                    (mapcar (lambda (x) (form-to-php x env nil nil)) tail)
                    (if stmt 0 1)))))
-    (concatenate 'string "$"
-                 (get-name form env)
-                 (if stmt (format nil ";~%") ""))))
+    (cond
+      ((numberp form) (number-to-php form))
+      ((stringp form) (string-to-php form))
+      ((keywordp form) (string-to-php (php-name form)))
+      (T (concatenate 'string "$"
+                      (get-name form env)
+                      (if stmt (format nil ";~%") ""))))))
+
+(defun number-to-php (number)
+  (cond
+    ((integerp number) (format nil "~a" number))
+    (T (format nil "~a" (float number)))))
+
+(defun string-to-php (form)
+  (format nil "'~a'" (regex-replace-all "\\'" form "\\\\'")))
 
 (defun if-to-php (tail env &optional (top-level nil) (stmt nil))
   (let* ((length-tail (length tail))
@@ -154,6 +186,25 @@
                 (mapcar #'add-indent php-bindings)
                 (mapcar (lambda (x) (add-indent (form-to-php x new-env nil T))) (butlast forms))
                 (add-indent (format nil "return ~a;~%" (form-to-php (car (last forms)) new-env))))))))
+
+(defun setf-to-php (form env &optional (top-level nil) (stmt nil))
+  (if stmt
+    (format nil "~a = ~a;~%" (form-to-php (cadr form) env top-level nil)
+            (form-to-php (caddr form) env top-level nil))
+    (format nil "(~a = ~a)" (form-to-php (cadr form) env top-level nil)
+            (form-to-php (caddr form) env top-level nil))))
+
+(defun infix-to-php (op tail env &optional (top-level nil) (stmt nil))
+  (when (< (length tail) 2)
+    (error "infix operator '~a' requires at least 2 arguments" op))
+  (format nil (format nil "(~~{~~a~~^ ~a ~~})" op)
+          (mapcar (lambda (x) (form-to-php x env top-level nil))
+                  tail)))
+
+(defun unary-to-php (op tail env &optional (top-level nil) (stmt nil))
+  (when (not (= (length tail) 1))
+    (error "unary operator '~a' requires exactly 1 argument" op))
+  (format nil "(~a ~a)" op (form-to-php (car tail) env top-level nil)))
 
 (defun ltp (string)
   (let ((more T)
