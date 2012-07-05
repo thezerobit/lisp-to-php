@@ -10,9 +10,10 @@
 (in-package :lisp-to-php)
 
 ;;TODO:
+;; optional args to defun
 ;; lambda
 ;; progn
-;; defun -> function
+;; array support (vector)
 ;; method calls (->bar foo 1 2 3) -> $foo->bar(1, 2, 3)
 ;; number literals
 ;; funcall
@@ -53,6 +54,13 @@
       (setq name (concatenate 'string name "_")))
     name))
 
+(defun var-names-from-arglist (arglist)
+  (let ((var-names '()))
+    (dolist (item arglist)
+      (when (and (symbolp item) (not (keywordp item)))
+        (push item var-names)))
+    var-names))
+
 (defun get-free-variables (form &optional (ignore '()))
   (let ((varnames '()))
     (if (listp form)
@@ -65,6 +73,11 @@
              (dolist (binding (cadr form))
                (setq varnames (union varnames (get-free-variables (cadr binding) ignore))))
              (dolist (expr (cddr form))
+               (setq varnames (union varnames (get-free-variables expr new-ignore))))))
+          ((eq '|defun| head)
+           (let* ((more-to-ignore (var-names-from-arglist (caddr form)))
+                  (new-ignore (union ignore more-to-ignore)))
+             (dolist (expr (cdddr form))
                (setq varnames (union varnames (get-free-variables expr new-ignore))))))
           (T (dolist (subform (cdr form))
                (setq varnames (union varnames (get-free-variables subform ignore)))))))
@@ -98,6 +111,8 @@
          (if-to-php tail env top-level stmt))
         ((eq '|let| head)
          (let-to-php form env top-level stmt))
+        ((eq '|defun| head)
+         (defun-to-php form env top-level stmt))
         ((member head '(|setq| |setf|))
          (setf-to-php form env top-level stmt))
         ((member head *infix*)
@@ -160,6 +175,21 @@
           (form-to-php symbol new-env top-level)
           (form-to-php expr env top-level)))
 
+(defun lambda-to-php (forms &key (name "") args free-vars php-bindings outer-env inner-env)
+  (let ((format-string
+          (concatenate 'string
+                       (if name "function ~a " "function ~a")
+                       "(~{~a~^, ~}) "
+                       (if free-vars "use (~{~a~^, ~}) " "~{ ~}")
+                       "{~%~{~a~}~{~a~}~a}")))
+    (format nil format-string
+            name
+            (mapcar (lambda (x) (form-to-php x inner-env)) args)
+            (mapcar (lambda (x) (form-to-php x outer-env)) free-vars)
+            (mapcar #'add-indent php-bindings)
+            (mapcar (lambda (x) (add-indent (form-to-php x inner-env nil T))) (butlast forms))
+            (add-indent (format nil "return ~a;~%" (form-to-php (car (last forms)) inner-env))))))
+
 (defun let-to-php (form env &optional (top-level nil) (stmt nil))
   (let* ((tail (cdr form))
          (bindings (car tail))
@@ -176,16 +206,23 @@
               (mapcar (lambda (form)
                         (form-to-php form new-env top-level T))
                       forms))
-      (let* ((free-vars (get-free-variables form))
-             (format-string
-               (if free-vars
-                 "call_user_func(function () use (~{~a~^, ~}) {~%~{~a~}~{~a~}~a})"
-                 "call_user_func(function () ~{ ~} {~%~{~a~}~{~a~}~a})")))
-        (format nil format-string
-                (mapcar (lambda (x) (form-to-php x env)) free-vars)
-                (mapcar #'add-indent php-bindings)
-                (mapcar (lambda (x) (add-indent (form-to-php x new-env nil T))) (butlast forms))
-                (add-indent (format nil "return ~a;~%" (form-to-php (car (last forms)) new-env))))))))
+      (let* ((free-vars (get-free-variables form)))
+        (format nil "call_user_func(~a)"
+                (lambda-to-php forms
+                               :free-vars free-vars
+                               :php-bindings php-bindings
+                               :outer-env env
+                               :inner-env new-env))))))
+
+(defun defun-to-php (form env &optional (top-level nil) (stmt nil))
+  (let* ((name (cadr form))
+         (arglist (caddr form))
+         (body (cdddr form))
+         (free-vars (get-free-variables form))
+         (varnames (var-names-from-arglist arglist)))
+    (lambda-to-php body
+                   :name (php-name name)
+                   :args varnames)))
 
 (defun setf-to-php (form env &optional (top-level nil) (stmt nil))
   (if stmt
