@@ -10,7 +10,7 @@
         :cl-test-more))
 (in-package :lisp-to-php-test)
 
-(plan 12)
+(plan 13)
 
 (is (ltp "\"Steve's\"") "'Steve\\'s'" "PHP Strings.")
 (is (ltp "(let ((a b)) (setf a \"hello\") (print a))")
@@ -81,5 +81,9 @@ function foo ($x) {
         return ($x + $y_);
     });
 }" "Normal function definition with inner LET.")
+
+(is (ltp "#(1 2 3)")
+"array(1, 2, 3);
+" "Common Lisp vector syntax becomes PHP array.")
 
 (finalize)

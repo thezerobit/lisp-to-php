@@ -13,7 +13,7 @@
 ;; optional args to defun
 ;; lambda
 ;; progn
-;; array support (vector)
+;; array support (vector), literals: #(1 2 3)
 ;; method calls (->bar foo 1 2 3) -> $foo->bar(1, 2, 3)
 ;; number literals
 ;; funcall
@@ -127,6 +127,10 @@
       ((numberp form) (number-to-php form))
       ((stringp form) (string-to-php form))
       ((keywordp form) (string-to-php (php-name form)))
+      ((vectorp form) (format nil "array(~{~a~^, ~})~[;~%~]"
+                   (mapcar (lambda (x) (form-to-php x env nil nil))
+                           (concatenate 'list form))
+                   (if stmt 0 1)))
       (T (concatenate 'string "$"
                       (get-name form env)
                       (if stmt (format nil ";~%") ""))))))
